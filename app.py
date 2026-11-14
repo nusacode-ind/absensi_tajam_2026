@@ -11,24 +11,18 @@ from google.oauth2.service_account import Credentials
 # ==========================================
 
 def append_to_gsheet(df):
-    scope = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-
+    scope = ["https://www.googleapis.com/auth/spreadsheets",
+             "https://www.googleapis.com/auth/drive"]
+    # ✅ Ambil isi credentials dari Streamlit Secrets
     creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-    creds = Credentials.from_service_account_info(
-        creds_dict, scopes=scope
-    )
-
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
     client = gspread.authorize(creds)
-
-    sheet = client.open_by_url(
-        "https://docs.google.com/spreadsheets/d/19Mt4ir9Ag0XAyb6Pcc0eDWnpjn9iee7vgV6FE0PB6mA/edit?usp=sharing"
-    )
-
-    worksheet = sheet.sheet1
-
+    
+    # Ganti URL ini dengan URL Google Sheet client kamu
+    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/118j0HX6EfbjJ67PAZ8O6-BaKOzkR9VQTS74QwSbCYVU/edit?usp=sharing")
+    worksheet = sheet.sheet1  # atau .worksheet("NamaSheet")
+    
+    # Append baris satu per satu (aman di semua versi)
     for row in df.values.tolist():
         worksheet.append_row(row)
 
