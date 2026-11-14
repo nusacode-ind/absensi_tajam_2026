@@ -52,7 +52,7 @@ students_df = load_students(STUDENT_FILE)
 # PAGE CONFIGURATION
 # ==========================================
 
-st.title("📘 Presensi Digital TAJAM")
+st.title("📘 Presensi Digital TAJAM 2026/2027")
 
 st.markdown(
     "Silahkan input nama siswa yang **TIDAK HADIR** "
