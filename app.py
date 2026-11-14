@@ -1,76 +1,144 @@
 import streamlit as st
 import pandas as pd
 from datetime import date
-import os
+import json
 import gspread
 from google.oauth2.service_account import Credentials
 
+
+# ==========================================
+# GOOGLE SHEETS CONNECTION
+# ==========================================
+
 def append_to_gsheet(df):
-    scope = ["https://spreadsheets.google.com/feeds",
-             "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
+    scope = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+    creds = Credentials.from_service_account_info(
+        creds_dict, scopes=scope
+    )
+
     client = gspread.authorize(creds)
-    
-    # Ganti URL ini dengan URL Google Sheet client kamu
-    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/118j0HX6EfbjJ67PAZ8O6-BaKOzkR9VQTS74QwSbCYVU/edit?usp=sharing")
-    worksheet = sheet.sheet1  # atau .worksheet("NamaSheet")
-    
-    # Append baris satu per satu (aman di semua versi)
+
+    sheet = client.open_by_url(
+        "https://docs.google.com/spreadsheets/d/19Mt4ir9Ag0XAyb6Pcc0eDWnpjn9iee7vgV6FE0PB6mA/edit?usp=sharing"
+    )
+
+    worksheet = sheet.sheet1
+
     for row in df.values.tolist():
         worksheet.append_row(row)
 
-# Nama file data siswa
+
+# ==========================================
+# LOAD STUDENT DATA
+# ==========================================
+
 STUDENT_FILE = "daftar_siswa_ix.csv"
 
-# Load data siswa
+
 @st.cache_data
 def load_students(file):
     df = pd.read_csv(file)
-    # pastikan kolomnya ada
+
     if not all(col in df.columns for col in ["kelas", "nama_siswa"]):
         st.error("CSV harus punya kolom: 'kelas' dan 'nama_siswa'")
         st.stop()
-    return df
+
+    return df.reset_index(drop=True)
+
 
 students_df = load_students(STUDENT_FILE)
+
+
+# ==========================================
+# PAGE CONFIGURATION
+# ==========================================
+
 st.title("📘 Presensi Digital TAJAM")
 
 st.markdown(
     "Silahkan input nama siswa yang **TIDAK HADIR** "
     "pada kegiatan tambahan jam pembelajaran."
 )
-st.markdown("Jika siswa hadir semua, maka tidak perlu mengisi.")
 
-# Input tanggal
-tanggal = st.date_input("📅 Pilih Tanggal", date.today())
-
-# Membuat dictionary nama siswa dan kelas
-student_options = {
-    f"{row['nama_siswa']} - {row['kelas']}":
-    (row['nama_siswa'], row['kelas'])
-    for _, row in students_df.iterrows()
-}
-
-# Searchable dropdown
-selected_students = st.multiselect(
-    "🔍 Cari Nama Siswa",
-    options=list(student_options.keys()),
-    placeholder="Ketik nama siswa...",
+st.markdown(
+    "Jika siswa hadir semua, maka tidak perlu mengisi."
 )
 
-# Inisialisasi session state
+
+# ==========================================
+# SESSION STATE
+# ==========================================
+
 if "absensi" not in st.session_state:
     st.session_state.absensi = {}
 
-# Menampilkan siswa yang dipilih
+if "selected_students" not in st.session_state:
+    st.session_state.selected_students = []
+
+if "clear_selection" not in st.session_state:
+    st.session_state.clear_selection = False
+
+
+# Reset dropdown sebelum widget dibuat
+if st.session_state.clear_selection:
+    st.session_state.selected_students = []
+    st.session_state.clear_selection = False
+
+
+# ==========================================
+# DATE INPUT
+# ==========================================
+
+tanggal = st.date_input(
+    "📅 Pilih Tanggal",
+    date.today()
+)
+
+
+# ==========================================
+# SEARCHABLE STUDENT DROPDOWN
+# ==========================================
+
+st.markdown("### 🔍 Cari Nama Siswa")
+
+# Menggunakan indeks sebagai identitas unik siswa
+student_options = students_df.index.tolist()
+
+selected_students = st.multiselect(
+    "Ketik nama siswa yang tidak hadir",
+    options=student_options,
+    format_func=lambda idx: str(
+        students_df.loc[idx, "nama_siswa"]
+    ),
+    placeholder="Ketik nama siswa...",
+    key="selected_students"
+)
+
+
+# ==========================================
+# DISPLAY SELECTED STUDENTS
+# ==========================================
+
 if selected_students:
 
     st.markdown("---")
-    st.markdown("#### Daftar Siswa Tidak Hadir")
+    st.markdown("### Daftar Siswa Tidak Hadir")
 
-    for i, selected in enumerate(selected_students, start=1):
+    for i, student_id in enumerate(selected_students, start=1):
 
-        nama, kelas = student_options[selected]
+        nama = students_df.loc[student_id, "nama_siswa"]
+        kelas = students_df.loc[student_id, "kelas"]
+
+        # Identitas unik siswa
+        key_absen = str(student_id)
+
+        if key_absen not in st.session_state.absensi:
+            st.session_state.absensi[key_absen] = None
 
         col_no, col_nama, col_alpha, col_sakit, col_izin, col_delete = st.columns(
             [0.3, 2.5, 1, 1, 1, 0.6]
@@ -83,50 +151,64 @@ if selected_students:
             st.markdown(f"**{nama}**")
             st.caption(f"Kelas {kelas}")
 
-        if nama not in st.session_state.absensi:
-            st.session_state.absensi[nama] = None
-
         with col_alpha:
-            if st.button("Alpha", key=f"{kelas}_{nama}_alpha"):
-                st.session_state.absensi[nama] = "Alpha"
+            if st.button("Alpha", key=f"{key_absen}_alpha"):
+                st.session_state.absensi[key_absen] = "Alpha"
 
         with col_sakit:
-            if st.button("Sakit", key=f"{kelas}_{nama}_sakit"):
-                st.session_state.absensi[nama] = "Sakit"
+            if st.button("Sakit", key=f"{key_absen}_sakit"):
+                st.session_state.absensi[key_absen] = "Sakit"
 
         with col_izin:
-            if st.button("Izin", key=f"{kelas}_{nama}_izin"):
-                st.session_state.absensi[nama] = "Izin"
+            if st.button("Izin", key=f"{key_absen}_izin"):
+                st.session_state.absensi[key_absen] = "Izin"
 
         with col_delete:
-            if st.button("🗑️", key=f"{kelas}_{nama}_delete"):
-                st.session_state.absensi.pop(nama, None)
+            if st.button("🗑️", key=f"{key_absen}_delete"):
+                st.session_state.selected_students.remove(student_id)
+                st.session_state.absensi.pop(key_absen, None)
                 st.rerun()
 
-        if st.session_state.absensi.get(nama):
+        # Highlight selected status
+        status = st.session_state.absensi[key_absen]
+
+        if status:
             st.markdown(
                 f"<div style='color:green; font-size:13px; "
                 f"margin-left:60px;'>"
-                f"✔️ {st.session_state.absensi[nama]} dipilih"
-                f"</div>",
+                f"✔️ {status} dipilih</div>",
                 unsafe_allow_html=True
             )
 
-    st.markdown("---")
 
-    col_reset, col_save = st.columns(2)
+# ==========================================
+# RESET AND SAVE BUTTONS
+# ==========================================
 
-    if col_reset.button("🔄 Reset Semua"):
+st.markdown("---")
+
+col_reset, col_save = st.columns(2)
+
+
+with col_reset:
+    if st.button("🔄 Reset Semua", use_container_width=True):
         st.session_state.absensi = {}
+        st.session_state.clear_selection = True
         st.rerun()
 
-    if col_save.button("💾 Simpan Absensi"):
+
+with col_save:
+    if st.button("💾 Simpan Absensi", use_container_width=True):
 
         records = []
 
-        for selected in selected_students:
-            nama, kelas = student_options[selected]
-            status = st.session_state.absensi.get(nama)
+        for student_id in selected_students:
+
+            nama = students_df.loc[student_id, "nama_siswa"]
+            kelas = students_df.loc[student_id, "kelas"]
+
+            key_absen = str(student_id)
+            status = st.session_state.absensi.get(key_absen)
 
             if status:
                 records.append({
@@ -137,18 +219,37 @@ if selected_students:
                 })
 
         if records:
-            df = pd.DataFrame(records)
-            append_to_gsheet(df)
 
-            st.session_state.absensi = {}
-            st.session_state.show_toast = True
-            st.rerun()
+            df = pd.DataFrame(records)
+
+            try:
+                append_to_gsheet(df)
+
+                st.session_state.absensi = {}
+                st.session_state.clear_selection = True
+                st.session_state.show_toast = True
+
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Gagal menyimpan absensi: {e}")
 
         else:
             st.warning(
-                "⚠️ Belum ada keterangan ketidakhadiran yang dipilih."
+                "⚠️ Belum ada siswa yang dipilih "
+                "atau keterangan absensi belum diisi."
             )
 
+
+# ==========================================
+# SUCCESS NOTIFICATION
+# ==========================================
+
 if st.session_state.get("show_toast", False):
-    st.toast("Absensi berhasil disimpan!", icon="✅")
+
+    st.toast(
+        "Absensi berhasil disimpan!",
+        icon="✅"
+    )
+
     st.session_state.show_toast = False
