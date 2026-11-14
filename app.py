@@ -2,16 +2,13 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import os
-import json
 import gspread
 from google.oauth2.service_account import Credentials
 
 def append_to_gsheet(df):
-    scope = ["https://www.googleapis.com/auth/spreadsheets",
+    scope = ["https://spreadsheets.google.com/feeds",
              "https://www.googleapis.com/auth/drive"]
-    # ✅ Ambil isi credentials dari Streamlit Secrets
-    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+    creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
     client = gspread.authorize(creds)
     
     # Ganti URL ini dengan URL Google Sheet client kamu
@@ -21,6 +18,7 @@ def append_to_gsheet(df):
     # Append baris satu per satu (aman di semua versi)
     for row in df.values.tolist():
         worksheet.append_row(row)
+
 # Nama file data siswa
 STUDENT_FILE = "daftar_siswa_ix.csv"
 
