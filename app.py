@@ -33,87 +33,84 @@ def load_students(file):
     return df
 
 students_df = load_students(STUDENT_FILE)
-classes = students_df["kelas"].unique().tolist()
-#subject = ["Bahasa Indonesia", "Matematika", "IPA", "Bahasa Inggris"]
+st.title("📘 Presensi Digital TAJAM")
 
-st.title("📘 Presensi Digital TAJAM 2026")
-st.markdown("Silahkan input nama siswa yang **TIDAK HADIR** pada kegiatan tambahan jam pembelajaran.")
+st.markdown(
+    "Silahkan input nama siswa yang **TIDAK HADIR** "
+    "pada kegiatan tambahan jam pembelajaran."
+)
 st.markdown("Jika siswa hadir semua, maka tidak perlu mengisi.")
 
-# Input form
-col1, col2 = st.columns(2)
-with col1:
-    tanggal = st.date_input("📅 Pilih Tanggal", date.today())
-with col2:
-    kelas = st.selectbox("🏫 Pilih Kelas", classes)
+# Input tanggal
+tanggal = st.date_input("📅 Pilih Tanggal", date.today())
 
-if kelas:
-    siswa_kelas = students_df.loc[
-        students_df["kelas"] == kelas, "nama_siswa"
-    ].tolist()
+# Membuat dictionary nama siswa dan kelas
+student_options = {
+    f"{row['nama_siswa']} - {row['kelas']}":
+    (row['nama_siswa'], row['kelas'])
+    for _, row in students_df.iterrows()
+}
 
-    st.markdown(f"#### Daftar Siswa Tidak Hadir")
+# Searchable dropdown
+selected_students = st.multiselect(
+    "🔍 Cari Nama Siswa",
+    options=list(student_options.keys()),
+    placeholder="Ketik nama siswa...",
+)
 
-    # Dropdown dengan fitur search dan multiple selection
-    selected_students = st.multiselect(
-        "🔍 Cari dan pilih nama siswa",
-        options=siswa_kelas,
-        placeholder="Ketik nama siswa yang tidak hadir...",
-        key=f"selected_students_{kelas}"
-    )
+# Inisialisasi session state
+if "absensi" not in st.session_state:
+    st.session_state.absensi = {}
 
-    # Inisialisasi session state
-    if "absensi" not in st.session_state:
-        st.session_state.absensi = {}
+# Menampilkan siswa yang dipilih
+if selected_students:
 
-    # Tampilkan siswa yang sudah dipilih
-    if selected_students:
+    st.markdown("---")
+    st.markdown("#### Daftar Siswa Tidak Hadir")
 
-        st.markdown("---")
-        st.markdown("#### Keterangan Ketidakhadiran")
+    for i, selected in enumerate(selected_students, start=1):
 
-        for i, nama in enumerate(selected_students, start=1):
+        nama, kelas = student_options[selected]
 
-            col_no, col_nama, col_alpha, col_sakit, col_izin, col_delete = st.columns(
-                [0.3, 2.5, 1, 1, 1, 0.6]
+        col_no, col_nama, col_alpha, col_sakit, col_izin, col_delete = st.columns(
+            [0.3, 2.5, 1, 1, 1, 0.6]
+        )
+
+        with col_no:
+            st.markdown(f"**{i}.**")
+
+        with col_nama:
+            st.markdown(f"**{nama}**")
+            st.caption(f"Kelas {kelas}")
+
+        if nama not in st.session_state.absensi:
+            st.session_state.absensi[nama] = None
+
+        with col_alpha:
+            if st.button("Alpha", key=f"{kelas}_{nama}_alpha"):
+                st.session_state.absensi[nama] = "Alpha"
+
+        with col_sakit:
+            if st.button("Sakit", key=f"{kelas}_{nama}_sakit"):
+                st.session_state.absensi[nama] = "Sakit"
+
+        with col_izin:
+            if st.button("Izin", key=f"{kelas}_{nama}_izin"):
+                st.session_state.absensi[nama] = "Izin"
+
+        with col_delete:
+            if st.button("🗑️", key=f"{kelas}_{nama}_delete"):
+                st.session_state.absensi.pop(nama, None)
+                st.rerun()
+
+        if st.session_state.absensi.get(nama):
+            st.markdown(
+                f"<div style='color:green; font-size:13px; "
+                f"margin-left:60px;'>"
+                f"✔️ {st.session_state.absensi[nama]} dipilih"
+                f"</div>",
+                unsafe_allow_html=True
             )
-
-            with col_no:
-                st.markdown(f"**{i}.**")
-
-            with col_nama:
-                st.markdown(f"**{nama}**")
-
-            # Default value
-            if nama not in st.session_state.absensi:
-                st.session_state.absensi[nama] = None
-
-            with col_alpha:
-                if st.button("Alpha", key=f"{kelas}_{nama}_alpha"):
-                    st.session_state.absensi[nama] = "Alpha"
-
-            with col_sakit:
-                if st.button("Sakit", key=f"{kelas}_{nama}_sakit"):
-                    st.session_state.absensi[nama] = "Sakit"
-
-            with col_izin:
-                if st.button("Izin", key=f"{kelas}_{nama}_izin"):
-                    st.session_state.absensi[nama] = "Izin"
-
-            with col_delete:
-                if st.button("🗑️", key=f"{kelas}_{nama}_delete"):
-                    st.session_state.absensi[nama] = None
-                    st.rerun()
-
-            # Tampilkan status yang dipilih
-            if st.session_state.absensi[nama]:
-                st.markdown(
-                    f"<div style='color:green; font-size:13px; "
-                    f"margin-left:60px;'>"
-                    f"✔️ {st.session_state.absensi[nama]} dipilih"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
 
     st.markdown("---")
 
@@ -123,11 +120,12 @@ if kelas:
         st.session_state.absensi = {}
         st.rerun()
 
-    if col_save.button("💾 Simpan Absensi Kelas"):
+    if col_save.button("💾 Simpan Absensi"):
 
         records = []
 
-        for nama in selected_students:
+        for selected in selected_students:
+            nama, kelas = student_options[selected]
             status = st.session_state.absensi.get(nama)
 
             if status:
@@ -151,7 +149,6 @@ if kelas:
                 "⚠️ Belum ada keterangan ketidakhadiran yang dipilih."
             )
 
-# Tampilkan toast setelah rerun
 if st.session_state.get("show_toast", False):
-    st.toast("Absensi kelas berhasil disimpan!", icon="✅")
+    st.toast("Absensi berhasil disimpan!", icon="✅")
     st.session_state.show_toast = False
